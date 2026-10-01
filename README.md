@@ -32,19 +32,30 @@ Node.js 20+ / Playwright / better-sqlite3 / Fastify
 
 ## 快速开始（Windows）
 
-**双击 `start.bat` 即可**：自动安装依赖 → 生成默认配置 → 启动并打开控制台网页（http://127.0.0.1:8787）。
+### 方式一：发行版 exe（推荐）
 
-之后的操作都在网页里完成：
+到 [Releases](https://gitee.com/thymef/xianyu-sniper/releases) 下载：
 
-1. 首次使用：控制台右上角点「扫码登录」，在弹出的浏览器里扫码
-2. 「监控任务」→ 新建任务：填关键词 + 目标价（可选包含词/排除词/价格区间）
-3. 程序自动定时扫描，命中就推送到你配置的渠道；「商品浏览」可查看每条商品为什么命中/被过滤
+| 文件 | 说明 |
+|---|---|
+| `xianyu-sniper-setup-*.exe` | 安装版，双击安装，从开始菜单/桌面启动 |
+| `xianyu-sniper-portable-*.exe` | 免安装绿色版，双击即用 |
 
-<details>
-<summary>命令行方式（可选）</summary>
+无需安装 Node.js 或浏览器（采集复用系统自带的 Edge/Chrome）。启动后自动打开控制台（默认 http://127.0.0.1:8787，被占用时自动顺延），数据与登录态存放在 `%APPDATA%\xianyu-sniper\`。
+
+### 方式二：源码运行
+
+前置：Node.js 20+。
 
 ```powershell
 npm install
+npm run electron   # 启动 Electron 桌面壳：调度器 + 控制台窗口 + 托盘常驻
+```
+
+<details>
+<summary>纯命令行方式（无窗口，可选）</summary>
+
+```powershell
 Copy-Item config.example.json config.json   # 按需填写通知 Key / AI 配置
 node src/index.js login                      # 扫码登录（也可在网页里扫）
 node src/index.js add "iphone 15" --target 3500 --exclude "回收,换购"
@@ -54,15 +65,23 @@ node src/index.js run                        # 启动调度器 + Web 控制台
 常用命令：`list` 列任务、`rm <id>` 删除、`enable/disable <id>` 启停、`run --once` 单轮扫描、`test-notify` 测试通知。
 </details>
 
+### 首次使用
+
+1. 控制台右上角点「扫码登录」，在弹出的浏览器里扫码
+2. 「监控任务」→ 新建任务：填关键词 + 目标价（可选包含词/排除词/价格区间）
+3. 程序自动定时扫描，命中就推送到你配置的渠道；「商品浏览」可查看每条商品为什么命中/被过滤
+
 ## 目录结构
 
 ```text
 xianyu-sniper/
 ├── AGENTS.md            # AI 协作与项目规范
 ├── README.md
+├── build/               # 打包素材（icon.ico）
 ├── docs/                # 编号文档（方案/架构/进度/参考说明）
-├── reference/           # 参考代码留存（Xianyu-Supply-Monitor 源码，该项目目录后续会删除）
-├── src/                 # 项目源码
+├── reference/           # 参考代码留存（Xianyu-Supply-Monitor 源码快照，只读）
+├── scripts/             # 工具脚本（图标生成/打包/ABI 切换）
+├── src/                 # 项目源码（web 控制台 / electron 壳 / 采集调度）
 ├── state/               # 登录态 storage_state（gitignore，不入库）
 ├── data/                # SQLite 数据文件（gitignore）
 └── config.example.json  # 配置模板
