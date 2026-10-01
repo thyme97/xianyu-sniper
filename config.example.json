@@ -1,0 +1,20 @@
+{
+  "server": { "host": "127.0.0.1", "port": 8787 },
+  "notify": {
+    "bark": "",
+    "serverchan": "",
+    "telegram": "",
+    "dingtalk": "",
+    "webhook": "",
+    "feishu": "",
+    "desktop": true
+  },
+  "ai": {
+    "enabled": false,
+    "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+    "apiKey": "",
+    "model": "glm-4-flash",
+    "strict": false
+  },
+  "scan": { "firstScanNotify": false, "retentionDays": 30 }
+}

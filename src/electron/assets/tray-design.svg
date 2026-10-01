@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- 用户设计的托盘图标源稿：黄底圆角方块 + 放大镜 + 价格标签（带降价箭头） -->
+  <!-- 背景 -->
+  <rect width="1024" height="1024" rx="224" fill="#FFE800"/>
+
+  <!-- 放大镜手柄 -->
+  <line x1="640" y1="640" x2="820" y2="820"
+        stroke="#2B2B2B" stroke-width="72" stroke-linecap="round"/>
+
+  <!-- 放大镜镜圈 -->
+  <circle cx="470" cy="470" r="250"
+          fill="#FFFFFF" stroke="#2B2B2B" stroke-width="64"/>
+
+  <!-- 镜片内：价格标签 -->
+  <g transform="translate(470 470)">
+    <!-- 标签主体 -->
+    <path d="M -110 -70 L 70 -70 L 130 -10 L 70 50 L -110 50 Z"
+          fill="#FFE800" stroke="#2B2B2B" stroke-width="26"
+          stroke-linejoin="round"/>
+    <!-- 标签孔 -->
+    <circle cx="-72" cy="-10" r="16" fill="#2B2B2B"/>
+    <!-- 向下箭头 -->
+    <path d="M 10 -22 L 10 14 M -14 -8 L 10 18 L 34 -8"
+          fill="none" stroke="#2B2B2B" stroke-width="26"
+          stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

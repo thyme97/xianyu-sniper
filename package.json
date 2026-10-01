@@ -1,0 +1,54 @@
+{
+  "name": "xianyu-sniper",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "本地优先的闲鱼蹲价监控：关键词+目标价 → 规则+AI 双层筛选 → 多渠道通知",
+  "main": "src/electron/main.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "login": "node src/index.js --login",
+    "electron": "electron .",
+    "gen-icons": "node scripts/gen-tray-icons.js",
+    "gen-app-icon": "node scripts/gen-app-icon.js",
+    "dist": "electron-builder",
+    "abi:electron": "node scripts/abi-switch.js electron",
+    "abi:node": "node scripts/abi-switch.js node"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@fastify/static": "^7.0.0",
+    "better-sqlite3": "^11.3.0",
+    "fastify": "^4.28.0",
+    "playwright": "^1.47.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "electron": "^31.7.7",
+    "electron-builder": "^26.15.3",
+    "jpeg-js": "^0.4.4"
+  },
+  "build": {
+    "appId": "com.xianyu.sniper",
+    "productName": "闲鱼蹲价助手",
+    "files": ["src/**/*", "package.json"],
+    "asarUnpack": ["**/node_modules/better-sqlite3/**"],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "xianyu-sniper-setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "xianyu-sniper-portable-${version}.${ext}"
+    }
+  }
+}

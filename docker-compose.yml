@@ -1,0 +1,12 @@
+services:
+  sniper:
+    build: .
+    container_name: xianyu-sniper
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    volumes:
+      - ./data:/app/data        # SQLite 数据库
+      - ./state:/app/state      # 登录态（先在本机 npm run login 后拷贝，或经 Web 导入）
+      - ./config.json:/app/config.json:ro
+    # 容器内 headless 运行，无需显示服务

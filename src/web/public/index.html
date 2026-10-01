@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>闲鱼蹲价助手</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --line: #e6e8eb;
+    --text: #1f2329;
+    --muted: #8a919f;
+    --primary: #ff6a00;
+    --primary-weak: #fff1e6;
+    --ok: #16a34a;
+    --ok-weak: #e9f7ef;
+    --danger: #dc2626;
+    --danger-weak: #fdecec;
+    --warn: #d97706;
+    --warn-weak: #fdf3e3;
+    --info: #2563eb;
+    --info-weak: #e8effd;
+    --sidebar: #171e2e;
+    --sidebar-text: #9aa3b5;
+    --radius: 12px;
+    --shadow: 0 1px 3px rgba(16, 24, 40, .06), 0 1px 2px rgba(16, 24, 40, .04);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg); color: var(--text); font-size: 14px;
+  }
+  .app { display: flex; min-height: 100vh; }
+
+  /* ---------- 侧边栏 ---------- */
+  .sidebar {
+    width: 216px; flex-shrink: 0; background: var(--sidebar); color: var(--sidebar-text);
+    display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 20px 18px 16px; color: #fff; }
+  .brand-logo {
+    width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+    display: block;
+  }
+  .brand-name { font-size: 15px; font-weight: 700; line-height: 1.2; }
+  .brand-sub { font-size: 11px; color: var(--sidebar-text); margin-top: 2px; }
+  .nav { flex: 1; padding: 6px 10px; overflow-y: auto; }
+  .nav-item {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 2px;
+    border-radius: 8px; cursor: pointer; color: var(--sidebar-text); font-size: 14px;
+    transition: background .15s, color .15s; user-select: none;
+  }
+  .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .nav-item.active { background: rgba(255,106,0,.16); color: #ffb054; font-weight: 600; }
+  .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .sidebar-foot { padding: 12px 14px; border-top: 1px solid rgba(255,255,255,.08); font-size: 12px; }
+  .login-chip { display: flex; align-items: center; gap: 8px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #6b7280; flex-shrink: 0; }
+  .dot.on { background: #34d399; box-shadow: 0 0 6px rgba(52,211,153,.8); }
+  .dot.off { background: #f87171; }
+  .dot.busy { background: #fbbf24; animation: pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity: .4; } }
+
+  /* ---------- 主区 ---------- */
+  .main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar {
+    height: 60px; background: var(--card); border-bottom: 1px solid var(--line);
+    display: flex; align-items: center; padding: 0 24px; gap: 12px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  .topbar h2 { font-size: 16px; font-weight: 700; flex: 1; }
+  .content { padding: 24px; max-width: 1200px; width: 100%; margin: 0 auto; }
+  .view { display: none; }
+  .view.active { display: block; animation: fadein .18s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } }
+
+  /* ---------- 通用组件 ---------- */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    font-size: 13px; cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .btn:hover { border-color: #cfd4db; background: #fafbfc; }
+  .btn.primary { background: var(--primary); border-color: var(--primary); color: #fff; font-weight: 600; }
+  .btn.primary:hover { background: #f25f02; }
+  .btn.danger { color: var(--danger); }
+  .btn.danger:hover { background: var(--danger-weak); border-color: #f3c1c1; }
+  .btn.sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .tag {
+    display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px;
+    font-size: 12px; font-weight: 500; white-space: nowrap;
+  }
+  .tag.ok { background: var(--ok-weak); color: var(--ok); }
+  .tag.off { background: #eef0f3; color: var(--muted); }
+  .tag.info { background: var(--info-weak); color: var(--info); }
+  .tag.warn { background: var(--warn-weak); color: var(--warn); }
+  .tag.bad { background: var(--danger-weak); color: var(--danger); }
+  .tag.primary { background: var(--primary-weak); color: var(--primary); }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    text-align: left; padding: 10px 14px; font-size: 12px; color: var(--muted); font-weight: 600;
+    border-bottom: 1px solid var(--line); background: #fafbfc; white-space: nowrap;
+  }
+  td { padding: 11px 14px; border-bottom: 1px solid #f0f2f4; vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #fafbfc; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  a { color: var(--info); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .price { font-weight: 700; color: var(--primary); font-variant-numeric: tabular-nums; }
+  .empty { padding: 48px 20px; text-align: center; color: var(--muted); }
+  .empty-icon { font-size: 34px; margin-bottom: 10px; opacity: .5; }
+
+  /* 统计卡 */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 20px; }
+  .stat-card { padding: 16px 18px; }
+  .stat-label { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .stat-value { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .stat-extra { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } .sidebar { width: 64px; } .brand-text, .nav-item span { display: none; } }
+  .panel-title { font-size: 14px; font-weight: 700; padding: 14px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+
+  /* 表单 */
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
+  .field input, .field select {
+    width: 100%; padding: 8px 11px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13px; background: #fff; color: var(--text); outline: none; transition: border .15s;
+  }
+  .field input:focus, .field select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(255,106,0,.1); }
+  .field .hint { font-size: 11px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .checkbox-line { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 10px; cursor: pointer; }
+  .checkbox-line input { width: 15px; height: 15px; accent-color: var(--primary); }
+
+  /* 弹窗 */
+  .modal-mask {
+    display: none; position: fixed; inset: 0; background: rgba(15, 23, 42, .45);
+    z-index: 100; align-items: flex-start; justify-content: center; padding: 6vh 16px;
+  }
+  .modal-mask.show { display: flex; }
+  .modal {
+    background: #fff; border-radius: 14px; width: 560px; max-width: 100%; max-height: 86vh;
+    display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.2); animation: pop .18s ease;
+  }
+  @keyframes pop { from { opacity: 0; transform: scale(.97); } }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; }
+  .modal-head h3 { font-size: 15px; }
+  .modal-close { border: none; background: none; font-size: 20px; color: var(--muted); cursor: pointer; line-height: 1; }
+  .modal-body { padding: 18px 20px; overflow-y: auto; }
+  .modal-foot { padding: 14px 20px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px; }
+
+  /* Toast */
+  #toast {
+    position: fixed; top: 20px; left: 50%; transform: translateX(-50%) translateY(-8px);
+    background: #1f2329; color: #fff; padding: 10px 18px; border-radius: 10px; font-size: 13px;
+    opacity: 0; pointer-events: none; transition: all .25s; z-index: 200; max-width: 80vw;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* 日志展开 */
+  .log-detail { background: #fafbfc; border-radius: 8px; padding: 12px 14px; margin: 0 14px 12px; font-size: 12px; }
+  .log-detail .row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; }
+  .filter-item { display: flex; gap: 10px; padding: 5px 0; border-bottom: 1px dashed #e8eaee; align-items: baseline; }
+  .filter-item:last-child { border-bottom: none; }
+  .filter-reason { color: var(--warn); flex-shrink: 0; }
+
+  /* 多选删除 */
+  .sel-cb { width: 15px; height: 15px; accent-color: var(--primary); cursor: pointer; vertical-align: middle; }
+  .log-row { display: flex; align-items: flex-start; }
+  .log-row > .sel-cb { margin: 14px 4px 0 10px; flex-shrink: 0; }
+  .log-row details { flex: 1; min-width: 0; }
+
+  /* 任务卡 */
+  .task-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+  .task-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .task-kw { font-size: 15px; font-weight: 700; }
+  .task-words { font-size: 12px; color: var(--muted); line-height: 1.6; }
+  .task-foot { display: flex; align-items: center; gap: 8px; border-top: 1px dashed var(--line); padding-top: 10px; flex-wrap: wrap; }
+  .switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer; }
+  .switch input { display: none; }
+  .switch i {
+    position: absolute; inset: 0; background: #d4d8de; border-radius: 999px; transition: .2s;
+  }
+  .switch i::after {
+    content: ''; position: absolute; width: 16px; height: 16px; border-radius: 50%; background: #fff;
+    top: 2px; left: 2px; transition: .2s; box-shadow: 0 1px 2px rgba(0,0,0,.2);
+  }
+  .switch input:checked + i { background: var(--ok); }
+  .switch input:checked + i::after { left: 18px; }
+
+  .thumb { width: 44px; height: 44px; border-radius: 8px; object-fit: cover; background: #f0f2f4; flex-shrink: 0; }
+  .item-title { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .pager { display: flex; align-items: center; justify-content: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid #f0f2f4; }
+  .pager:empty { display: none; }
+  .pager .pager-info { color: var(--muted); font-size: 12px; margin-right: auto; }
+  .pager button { min-width: 32px; }
+  .pager select { padding: 5px 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 12px; background: #fff; outline: none; }
+  .toolbar select, .toolbar input {
+    padding: 7px 11px; border: 1px solid var(--line); border-radius: 8px; font-size: 13px; background: #fff; outline: none;
+  }
+  .toolbar input { width: 200px; }
+  .toolbar input:focus, .toolbar select:focus { border-color: var(--primary); }
+  .rule-result { border-radius: 8px; padding: 10px 12px; font-size: 13px; margin-top: 10px; display: none; }
+  .rule-result.pass { display: block; background: var(--ok-weak); color: var(--ok); }
+  .rule-result.fail { display: block; background: var(--warn-weak); color: var(--warn); }
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <img class="brand-logo" src="/logo.svg" alt="闲鱼蹲价助手">
+      <div class="brand-text">
+        <div class="brand-name">闲鱼蹲价助手</div>
+        <div class="brand-sub">Xianyu Sniper</div>
+      </div>
+    </div>
+    <nav class="nav" id="nav">
+      <div class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+        <span>仪表盘</span>
+      </div>
+      <div class="nav-item" data-view="tasks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h10"/></svg>
+        <span>监控任务</span>
+      </div>
+      <div class="nav-item" data-view="hits">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.5 5.5L20 9.5l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-1z"/></svg>
+        <span>命中记录</span>
+      </div>
+      <div class="nav-item" data-view="items">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M4 7l2-3h12l2 3M4 7v11a2 2 0 002 2h12a2 2 0 002-2V7"/><path d="M9 12h6"/></svg>
+        <span>商品浏览</span>
+      </div>
+      <div class="nav-item" data-view="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>
+        <span>扫描日志</span>
+      </div>
+      <div class="nav-item" data-view="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 00-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 00-2-1.2L14 3h-4l-.5 2.6a7 7 0 00-2 1.2l-2.4-1-2 3.4 2 1.6A7 7 0 005 12c0 .4 0 .8.1 1.2l-2 1.6 2 3.4 2.4-1a7 7 0 002 1.2L10 21h4l.5-2.6a7 7 0 002-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2z"/></svg>
+        <span>设置</span>
+      </div>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="login-chip">
+        <span class="dot" id="loginDot"></span>
+        <span id="loginText">检测登录态…</span>
+      </div>
+      <div class="small" style="margin-top:8px;color:#5b6474;">本地运行 · 数据不出本机</div>
+    </div>
+  </aside>
+
+  <!-- 主区 -->
+  <div class="main">
+    <div class="topbar">
+      <h2 id="viewTitle">仪表盘</h2>
+      <button class="btn" id="btnScanWindow" title="把屏外运行的扫描浏览器窗口移回屏幕内围观">扫描窗口</button>
+      <button class="btn" id="btnScanOnce">立即扫描</button>
+      <button class="btn" id="btnTestNotify">测试通知</button>
+      <button class="btn primary" id="btnLogin">扫码登录</button>
+    </div>
+    <div class="content">
+
+      <!-- 仪表盘 -->
+      <section class="view active" id="view-dashboard">
+        <div class="stats" id="statCards"></div>
+        <div class="grid-2">
+          <div class="card">
+            <div class="panel-title">最近命中 <a href="#" onclick="switchView('hits');return false;" class="small">全部 →</a></div>
+            <div id="dashHits"></div>
+          </div>
+          <div class="card">
+            <div class="panel-title">监控任务 <a href="#" onclick="switchView('tasks');return false;" class="small">管理 →</a></div>
+            <div id="dashTasks"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 监控任务 -->
+      <section class="view" id="view-tasks">
+        <div class="toolbar">
+          <button class="btn primary" id="btnNewTask">+ 新建任务</button>
+          <span class="muted small">多词用 | 分隔、任一命中即达标；匹配忽略大小写，标题和描述都参与</span>
+        </div>
+        <div id="taskList" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px;"></div>
+      </section>
+
+      <!-- 命中记录 -->
+      <section class="view" id="view-hits">
+        <div class="card">
+          <div class="panel-title"><span>命中记录</span><span style="display:flex;gap:8px;"><button class="btn sm danger" id="btnHitSelDel" disabled>删除选中</button><button class="btn sm danger" id="btnClearHits">清空记录</button></span></div>
+          <div id="hitTable"></div><div class="pager" id="hitPager"></div>
+        </div>
+      </section>
+
+      <!-- 商品浏览 -->
+      <section class="view" id="view-items">
+        <div class="toolbar">
+          <select id="itemWatchFilter"><option value="">全部任务</option></select>
+          <select id="itemStatusFilter">
+            <option value="all">全部商品</option>
+            <option value="hit">已推送命中</option>
+            <option value="pass">规则达标（未推送）</option>
+            <option value="filtered">被过滤</option>
+          </select>
+          <input id="itemKeywordFilter" placeholder="搜索标题关键词…">
+          <button class="btn sm" id="btnItemFilter">筛选</button>
+        </div>
+        <div class="card">
+          <div class="panel-title"><span>商品档案</span><span style="display:flex;gap:8px;"><button class="btn sm danger" id="btnItemSelDel" disabled>删除选中</button><button class="btn sm danger" id="btnClearItems">清空商品</button></span></div>
+          <div id="itemTable"></div><div class="pager" id="itemPager"></div>
+        </div>
+      </section>
+
+      <!-- 扫描日志 -->
+      <section class="view" id="view-logs">
+        <div class="card">
+          <div class="panel-title"><span>扫描日志</span><span style="display:flex;gap:8px;"><button class="btn sm danger" id="btnLogSelDel" disabled>删除选中</button><button class="btn sm danger" id="btnClearLogs">清空日志</button></span></div>
+          <div id="logTable"></div><div class="pager" id="logPager"></div>
+        </div>
+      </section>
+
+      <!-- 设置 -->
+      <section class="view" id="view-settings">
+        <div class="grid-2">
+          <div class="card">
+            <div class="panel-title">通知渠道</div>
+            <div style="padding:16px 18px;">
+              <div class="field"><label>Bark（iOS）Key</label><input id="cfgBark" placeholder="https://api.day.app/你的Key"></div>
+              <div class="field"><label>Server 酱 SendKey</label><input id="cfgServerchan" placeholder="SCT…"></div>
+              <div class="field"><label>Telegram Bot Token</label><input id="cfgTelegram" placeholder="123456:ABC…"></div>
+              <div class="field"><label>钉钉 Robot 加签 Token</label><input id="cfgDingtalk" placeholder="SEC…"></div>
+              <div class="field"><label>飞书机器人 Webhook</label><input id="cfgFeishu" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/…"></div>
+              <label class="checkbox-line"><input type="checkbox" id="cfgDesktop"> Windows 桌面通知</label>
+              <div class="hint muted small">填好任意渠道后，点顶部「测试通知」验证。已保存的密钥显示为 ******，不改即保留。</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="panel-title">AI 复筛（OpenAI 兼容）</div>
+            <div style="padding:16px 18px;">
+              <label class="checkbox-line"><input type="checkbox" id="cfgAiEnabled"> 启用 AI 复筛（规则通过后再让 AI 判断）</label>
+              <div class="field"><label>接口地址 Base URL</label><input id="cfgAiBaseUrl" placeholder="https://api.xxx.com/v1"></div>
+              <div class="field"><label>API Key</label><input id="cfgAiKey" placeholder="sk-…"></div>
+              <div class="field"><label>模型</label><input id="cfgAiModel" placeholder="glm-4-flash"></div>
+              <label class="checkbox-line"><input type="checkbox" id="cfgAiStrict"> 严格模式（AI 调用失败时丢弃商品，而非放行）</label>
+              <div class="hint muted small">每个任务可单独开关 AI（任务编辑里勾选）。输入标题+价格+描述，输出是否匹配及原因。</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="panel-title">扫描</div>
+            <div style="padding:16px 18px;">
+              <label class="checkbox-line"><input type="checkbox" id="cfgFirstScan"> 首次扫描也推送（默认首扫只建档不推送，避免刷屏）</label>
+              <div class="field" style="max-width:200px;">
+                <label>日志保留天数</label>
+                <input id="cfgRetention" type="number" min="1" max="365" value="30">
+                <div class="hint">扫描日志与价格历史超过该天数自动清理；老商品档案保留，但释放原始数据空间。启动时与每天各清理一次。</div>
+              </div>
+              <div class="hint muted small">轮询间隔 ≥60 秒并自动加 ±30% 抖动；多任务自动错峰串行执行，降低风控风险。</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="panel-title">登录态</div>
+            <div style="padding:16px 18px;">
+              <div id="loginStateInfo" class="small" style="margin-bottom:12px;"></div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button class="btn primary" id="btnLogin2">扫码登录</button>
+                <button class="btn" id="btnLoginCancel">取消登录</button>
+                <a class="btn" href="/api/login-state/export" download>导出登录态</a>
+                <button class="btn" id="btnImport">导入登录态</button>
+                <input type="file" id="importFile" accept=".json" style="display:none">
+              </div>
+              <div class="hint muted small">扫码登录会弹出浏览器窗口，扫码成功后自动保存；日常扫描复用该登录态，无需重复登录。</div>
+            </div>
+          </div>
+        </div>
+        <div style="margin-top:16px;display:flex;justify-content:flex-end;">
+          <button class="btn primary" id="btnSaveSettings" style="padding:10px 26px;">保存设置</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- 任务编辑弹窗 -->
+<div class="modal-mask" id="taskModal">
+  <div class="modal">
+    <div class="modal-head">
+      <h3 id="taskModalTitle">新建监控任务</h3>
+      <button class="modal-close" onclick="closeModal('taskModal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="tfId">
+      <div class="field">
+        <label>搜索关键词 *</label>
+        <input id="tfKeyword" placeholder="如：mac mini m4 24g">
+        <div class="hint">发送给闲鱼搜索的词，决定扫到什么商品</div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>目标价（≤ 推送）</label><input id="tfTarget" type="number" step="0.01" placeholder="6300"></div>
+        <div class="field"><label>扫描间隔（秒，≥60）</label><input id="tfInterval" type="number" min="60" value="120"></div>
+      </div>
+      <div class="form-row">
+        <div class="field"><label>价格下限（防引流）</label><input id="tfMin" type="number" step="0.01" placeholder="可选"></div>
+        <div class="field"><label>价格上限</label><input id="tfMax" type="number" step="0.01" placeholder="可选"></div>
+      </div>
+      <div class="field">
+        <label>包含词（任一命中才推送）</label>
+        <input id="tfInclude" placeholder="如：24G|512G">
+        <div class="hint">竖线/逗号分隔，忽略大小写；标题和描述都参与匹配。命中词≠整条配置，规则是「价格达标 且 命中任一包含词 且 不含排除词」。</div>
+      </div>
+      <div class="field"><label>排除词（命中即过滤）</label><input id="tfExclude" placeholder="如：回收|换购|扩容"></div>
+      <div class="form-row">
+        <div class="field"><label>地区包含</label><input id="tfAreaIn" placeholder="如：广东（可选）"></div>
+        <div class="field"><label>地区排除</label><input id="tfAreaOut" placeholder="如：新疆（可选）"></div>
+      </div>
+      <label class="checkbox-line"><input type="checkbox" id="tfAi"> 此任务启用 AI 复筛</label>
+      <div id="ruleTestBox" style="display:none;border-top:1px dashed var(--line);padding-top:14px;margin-top:6px;">
+        <div class="field" style="margin-bottom:8px;"><label>规则试算：粘贴一条商品标题验证规则</label>
+          <div style="display:flex;gap:8px;">
+            <input id="rtTitle" placeholder="商品标题…" style="flex:1;">
+            <input id="rtPrice" type="number" placeholder="价格" style="width:100px;">
+            <button class="btn sm" id="btnTestRule">试算</button>
+          </div>
+        </div>
+        <div class="rule-result" id="rtResult"></div>
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn" onclick="closeModal('taskModal')">取消</button>
+      <button class="btn primary" id="btnSaveTask">保存任务</button>
+    </div>
+  </div>
+</div>
+
+<!-- 通用信息弹窗 -->
+<div class="modal-mask" id="infoModal">
+  <div class="modal">
+    <div class="modal-head"><h3 id="infoTitle">详情</h3><button class="modal-close" onclick="closeModal('infoModal')">×</button></div>
+    <div class="modal-body" id="infoBody"></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ================= 基础工具 ================= */
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function api(path, options = {}) {
+  // 只在有请求体时设置 JSON 头，否则无 body 的 POST 会被 Fastify 判为 400
+  const headers = options.body ? { 'Content-Type': 'application/json' } : {};
+  const response = await fetch(path, { ...options, headers });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || data.message || `HTTP ${response.status}`);
+  return data;
+}
+
+let toastTimer = null;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+function fmtTime(s) { return s ? String(s).replace('T', ' ') : '—'; }
+function fmtPrice(v) { return v == null ? '—' : `¥${v}`; }
+
+function openModal(id) { $(id).classList.add('show'); }
+function closeModal(id) { $(id).classList.remove('show'); }
+document.querySelectorAll('.modal-mask').forEach((mask) => {
+  mask.addEventListener('click', (e) => { if (e.target === mask) mask.classList.remove('show'); });
+});
+
+/* ================= 视图路由 ================= */
+const VIEW_NAMES = { dashboard: '仪表盘', tasks: '监控任务', hits: '命中记录', items: '商品浏览', logs: '扫描日志', settings: '设置' };
+function switchView(name) {
+  document.querySelectorAll('.nav-item').forEach((el) => el.classList.toggle('active', el.dataset.view === name));
+  document.querySelectorAll('.view').forEach((el) => el.classList.toggle('active', el.id === `view-${name}`));
+  $('viewTitle').textContent = VIEW_NAMES[name] || name;
+  location.hash = name;
+  const loaders = { dashboard: loadDashboard, tasks: loadTasks, hits: loadHits, items: loadItems, logs: loadLogs, settings: loadSettings };
+  loaders[name]?.().catch((e) => toast(`加载失败：${e.message}`));
+}
+document.querySelectorAll('.nav-item').forEach((el) => el.addEventListener('click', () => switchView(el.dataset.view)));
+
+/* ================= 仪表盘 ================= */
+async function loadDashboard() {
+  const [stats, hits, tasks] = await Promise.all([api('/api/stats'), api('/api/hits?page=1&pageSize=5'), api('/api/watch-items')]);
+  const recentHits = hits.list || [];
+  $('statCards').innerHTML = `
+    <div class="card stat-card"><div class="stat-label">监控任务</div><div class="stat-value">${stats.enabledTasks}<span class="muted" style="font-size:13px;font-weight:400"> / ${stats.tasks}</span></div><div class="stat-extra">启用中 / 总数</div></div>
+    <div class="card stat-card"><div class="stat-label">商品档案</div><div class="stat-value">${stats.items}</div><div class="stat-extra">今日新增 ${stats.todayItems}</div></div>
+    <div class="card stat-card"><div class="stat-label">累计命中</div><div class="stat-value" style="color:var(--ok)">${stats.hits}</div><div class="stat-extra">今日命中 ${stats.todayHits}</div></div>
+    <div class="card stat-card"><div class="stat-label">最近扫描</div><div class="stat-value" style="font-size:15px;line-height:1.5">${stats.lastScan ? fmtTime(stats.lastScan.started_at) : '尚未扫描'}</div><div class="stat-extra">${stats.lastScan ? (stats.lastScan.status === 'ok' ? '状态正常' : '上次异常') : '点右上「立即扫描」开始'}</div></div>`;
+  $('dashHits').innerHTML = recentHits.length ? recentHits.map((h) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #f0f2f4;">
+      <div style="flex:1;min-width:0;">
+        <a class="item-title" href="${esc(h.url)}" target="_blank">${esc(h.title)}</a>
+        <div class="small muted">${esc(h.keyword)} · ${esc(h.area || '—')} · ${h.notified_at ? '推送 ' + fmtTime(h.notified_at) : '首扫基线（未推送）'}</div>
+      </div>
+      <div class="price">${fmtPrice(h.price)}</div>
+    </div>`).join('') : '<div class="empty"><div class="empty-icon">—</div>暂无命中，蹲到好价会出现在这里</div>';
+  $('dashTasks').innerHTML = tasks.length ? tasks.map((t) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #f0f2f4;">
+      <div style="flex:1;min-width:0;">
+        <div class="task-kw" style="font-size:13px;">${esc(t.keyword)}</div>
+        <div class="small muted">目标价 ${t.target_price ?? '—'} · 每 ${t.interval_sec}s</div>
+      </div>
+      <span class="tag ${t.enabled ? 'ok' : 'off'}">${t.enabled ? '运行中' : '已停用'}</span>
+    </div>`).join('') : '<div class="empty"><div class="empty-icon">—</div>还没有任务，去「监控任务」新建一个</div>';
+}
+
+/* ================= 监控任务 ================= */
+async function loadTasks() {
+  const tasks = await api('/api/watch-items');
+  $('taskList').innerHTML = tasks.length ? tasks.map((t) => `
+    <div class="card task-card">
+      <div class="task-head">
+        <label class="switch" title="启用/停用">
+          <input type="checkbox" ${t.enabled ? 'checked' : ''} onchange="toggleTask(${t.id}, this.checked)">
+          <i></i>
+        </label>
+        <div class="task-kw" style="flex:1;">${esc(t.keyword)}</div>
+        <span class="tag ${t.ai_enabled ? 'info' : 'off'}">${t.ai_enabled ? 'AI 复筛' : '仅规则'}</span>
+      </div>
+      <div class="task-words">
+        目标价 <b class="price">${t.target_price ?? '—'}</b>
+        ${t.min_price != null ? ` · 下限 ${t.min_price}` : ''}${t.max_price != null ? ` · 上限 ${t.max_price}` : ''} · 每 ${t.interval_sec}s
+        <br>包含：${esc(t.include_words) || '<i>不限</i>'} ｜ 排除：${esc(t.exclude_words) || '<i>不限</i>'}
+        ${t.area_include ? `<br>地区含：${esc(t.area_include)}` : ''}${t.area_exclude ? ` ｜ 地区排：${esc(t.area_exclude)}` : ''}
+      </div>
+      <div class="task-foot">
+        <button class="btn sm" onclick="openTaskModal(${t.id})">编辑</button>
+        <button class="btn sm" onclick="scanDetailOfTask(${t.id})">查看商品</button>
+        <span style="flex:1"></span>
+        <button class="btn sm danger" onclick="removeTask(${t.id})">删除</button>
+      </div>
+    </div>`).join('') : '<div class="card empty" style="grid-column:1/-1;"><div class="empty-icon">＋</div>还没有监控任务<br><span class="small">点左上「新建任务」，关键词 + 目标价即可开始蹲价</span></div>';
+}
+
+async function toggleTask(id, enabled) {
+  try { await api(`/api/watch-items/${id}`, { method: 'PUT', body: JSON.stringify({ enabled }) }); toast(enabled ? '已启用' : '已停用'); }
+  catch (e) { toast(`操作失败：${e.message}`); loadTasks(); }
+}
+
+async function removeTask(id) {
+  if (!confirm('确定删除该任务？历史商品与命中记录会一并删除。')) return;
+  try { await api(`/api/watch-items/${id}`, { method: 'DELETE' }); toast('已删除'); loadTasks(); }
+  catch (e) { toast(`删除失败：${e.message}`); }
+}
+
+function scanDetailOfTask(id) {
+  $('itemWatchFilter').value = String(id);
+  $('itemStatusFilter').value = 'all';
+  switchView('items');
+}
+
+function openTaskModal(id) {
+  if (id) {
+    api('/api/watch-items').then((tasks) => {
+      const t = tasks.find((x) => x.id === id);
+      if (!t) return toast('任务不存在');
+      fillTaskForm(t);
+      openModal('taskModal');
+    });
+    return;
+  }
+  fillTaskForm(null);
+  openModal('taskModal');
+}
+
+function fillTaskForm(t) {
+  $('taskModalTitle').textContent = t ? '编辑监控任务' : '新建监控任务';
+  $('tfId').value = t?.id || '';
+  $('tfKeyword').value = t?.keyword || '';
+  $('tfTarget').value = t?.target_price ?? '';
+  $('tfInterval').value = t?.interval_sec ?? 120;
+  $('tfMin').value = t?.min_price ?? '';
+  $('tfMax').value = t?.max_price ?? '';
+  $('tfInclude').value = t?.include_words || '';
+  $('tfExclude').value = t?.exclude_words || '';
+  $('tfAreaIn').value = t?.area_include || '';
+  $('tfAreaOut').value = t?.area_exclude || '';
+  $('tfAi').checked = !!(t?.ai_enabled);
+  $('ruleTestBox').style.display = t ? 'block' : 'none';
+  $('rtResult').className = 'rule-result';
+}
+
+$('btnNewTask').addEventListener('click', () => openTaskModal(null));
+
+$('btnSaveTask').addEventListener('click', async () => {
+  const id = $('tfId').value;
+  const payload = {
+    keyword: $('tfKeyword').value.trim(),
+    target_price: $('tfTarget').value === '' ? null : Number($('tfTarget').value),
+    min_price: $('tfMin').value === '' ? null : Number($('tfMin').value),
+    max_price: $('tfMax').value === '' ? null : Number($('tfMax').value),
+    include_words: $('tfInclude').value.trim(),
+    exclude_words: $('tfExclude').value.trim(),
+    area_include: $('tfAreaIn').value.trim(),
+    area_exclude: $('tfAreaOut').value.trim(),
+    interval_sec: Math.max(60, Number($('tfInterval').value) || 120),
+    ai_enabled: $('tfAi').checked,
+  };
+  if (!payload.keyword) return toast('关键词不能为空');
+  try {
+    if (id) await api(`/api/watch-items/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+    else await api('/api/watch-items', { method: 'POST', body: JSON.stringify(payload) });
+    closeModal('taskModal');
+    toast('已保存，下一轮扫描生效');
+    loadTasks();
+  } catch (e) { toast(`保存失败：${e.message}`); }
+});
+
+$('btnTestRule').addEventListener('click', async () => {
+  const id = $('tfId').value;
+  if (!id) return;
+  const box = $('rtResult');
+  try {
+    const r = await api(`/api/watch-items/${id}/test-rule`, {
+      method: 'POST',
+      body: JSON.stringify({ title: $('rtTitle').value, price: $('rtPrice').value }),
+    });
+    box.className = `rule-result ${r.pass ? 'pass' : 'fail'}`;
+    box.textContent = r.pass ? `✓ 会推送：${r.reason}` : `✗ 不会推送：${r.reason}`;
+  } catch (e) { box.className = 'rule-result fail'; box.textContent = `试算失败：${e.message}`; }
+});
+
+/* ================= 通用分页 ================= */
+// 每页条数偏好（两个列表视图共用），默认 20
+const PAGE_SIZE_OPTIONS = [20, 50, 100, 200];
+function loadPageSizePref() {
+  const n = Number(localStorage.getItem('xsniperPageSize'));
+  return PAGE_SIZE_OPTIONS.includes(n) ? n : 20;
+}
+// 在 pagerEl 渲染分页条 + 每页条数选择；无数据时清空隐藏，单页时仅显示总数。onChange({page,pageSize}) 由各视图自己重载
+function renderPagination(pagerEl, { page, pageSize, total, onChange }) {
+  if (total <= 0) { pagerEl.innerHTML = ''; return; }
+  const totalPage = Math.max(1, Math.ceil(total / pageSize));
+  const info = `<span class="pager-info">共 ${total} 条${totalPage > 1 ? ` · 第 ${page} / ${totalPage} 页` : ''}</span>`;
+  const sizeSel = `<select class="pager-size" title="每页条数">${PAGE_SIZE_OPTIONS.map((n) => `<option value="${n}" ${n === pageSize ? 'selected' : ''}>${n} 条/页</option>`).join('')}</select>`;
+  if (totalPage <= 1) {
+    pagerEl.innerHTML = info + sizeSel;
+  } else {
+    pagerEl.innerHTML = `${info}${sizeSel}
+      <button class="btn sm" data-p="1" ${page <= 1 ? 'disabled' : ''}>首页</button>
+      <button class="btn sm" data-p="${page - 1}" ${page <= 1 ? 'disabled' : ''}>上一页</button>
+      <button class="btn sm" data-p="${page + 1}" ${page >= totalPage ? 'disabled' : ''}>下一页</button>
+      <button class="btn sm" data-p="${totalPage}" ${page >= totalPage ? 'disabled' : ''}>末页</button>`;
+    pagerEl.querySelectorAll('button[data-p]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const target = Number(btn.dataset.p);
+        if (target >= 1 && target <= totalPage && target !== page) onChange({ page: target, pageSize });
+      });
+    });
+  }
+  pagerEl.querySelector('.pager-size').addEventListener('change', (e) => {
+    localStorage.setItem('xsniperPageSize', e.target.value);
+    onChange({ page: 1, pageSize: Number(e.target.value) }); // 切换每页条数后回第 1 页
+  });
+}
+
+/* ================= 多选删除 ================= */
+// 更新「删除选中」按钮文案与禁用态
+function updateSelBtn(btn, set) {
+  btn.textContent = set.size ? `删除选中(${set.size})` : '删除选中';
+  btn.disabled = !set.size;
+}
+
+/* ================= 命中记录 ================= */
+let hitsPage = 1;
+let hitsPageSize = loadPageSizePref();
+const hitSelected = new Set();
+async function loadHits(page = hitsPage, pageSize = hitsPageSize) {
+  hitSelected.clear();
+  updateSelBtn($('btnHitSelDel'), hitSelected);
+  const data = await api(`/api/hits?page=${page}&pageSize=${pageSize}`);
+  hitsPage = data.page;
+  hitsPageSize = data.pageSize;
+  const hits = data.list || [];
+  $('hitTable').innerHTML = hits.length ? `
+    <table><thead><tr><th style="width:36px;"><input type="checkbox" class="sel-cb" id="hitSelAll" title="全选本页"></th><th style="width:56px"></th><th>商品</th><th>任务</th><th>价格</th><th>地区</th><th>推送状态</th><th></th></tr></thead>
+    <tbody>${hits.map((h) => `
+      <tr>
+        <td><input type="checkbox" class="sel-cb hit-sel" data-id="${h.id}"></td>
+        <td>${h.image_url && h.image_url.startsWith('http') ? `<img class="thumb" src="${esc(h.image_url)}" referrerpolicy="no-referrer">` : ''}</td>
+        <td style="max-width:360px;"><a class="item-title" style="max-width:360px" href="${esc(h.url)}" target="_blank">${esc(h.title)}</a></td>
+        <td><span class="tag primary">${esc(h.keyword)}</span></td>
+        <td class="price">${fmtPrice(h.price)}</td>
+        <td class="muted">${esc(h.area || '—')}</td>
+        <td class="muted small">${h.notified_at
+          ? `<span class="tag ok">已推送</span> <span title="推送时间">${fmtTime(h.notified_at)}</span>`
+          : `<span class="tag warn" title="首扫基线达标不推送；该商品降价时会重估并推送「降价达标」">首扫基线·未推送</span> <span title="首次看到时间">${fmtTime(h.first_seen_at)}</span>`}</td>
+        <td><a href="${esc(h.url)}" target="_blank" class="btn sm">打开</a></td>
+      </tr>`).join('')}</tbody></table>`
+    : '<div class="empty"><div class="empty-icon">—</div>暂无命中记录<br><span class="small">规则达标的商品会记录在这里；首扫基线达标默认只记录不推送（设置页可开启）</span></div>';
+  renderPagination($('hitPager'), { page: data.page, pageSize: data.pageSize, total: data.total, onChange: (o) => loadHits(o.page, o.pageSize) });
+}
+
+// 勾选与全选（事件委托，表头随 innerHTML 重建）
+$('hitTable').addEventListener('change', (e) => {
+  if (e.target.id === 'hitSelAll') {
+    document.querySelectorAll('.hit-sel').forEach((cb) => {
+      cb.checked = e.target.checked;
+      const id = Number(cb.dataset.id);
+      if (e.target.checked) hitSelected.add(id); else hitSelected.delete(id);
+    });
+  } else if (e.target.classList.contains('hit-sel')) {
+    const id = Number(e.target.dataset.id);
+    if (e.target.checked) hitSelected.add(id); else hitSelected.delete(id);
+    const cbs = [...document.querySelectorAll('.hit-sel')];
+    const all = $('hitSelAll');
+    all.checked = cbs.length > 0 && cbs.every((cb) => cb.checked);
+    all.indeterminate = cbs.some((cb) => cb.checked) && !all.checked;
+  }
+  updateSelBtn($('btnHitSelDel'), hitSelected);
+});
+
+// 删除选中命中：对应商品档案与价格历史一并删除
+$('btnHitSelDel').addEventListener('click', async () => {
+  if (!hitSelected.size) return;
+  if (!confirm(`确定删除选中的 ${hitSelected.size} 条命中记录？对应商品档案与价格历史会一并删除。`)) return;
+  try {
+    const r = await api('/api/items/batch-delete', { method: 'POST', body: JSON.stringify({ ids: [...hitSelected] }) });
+    toast(`已删除 ${r.cleared} 条命中记录`);
+    hitSelected.clear();
+    loadHits(1);
+  } catch (e) { toast(`删除失败：${e.message}`); }
+});
+
+// 清空命中记录：删除已推送的商品档案（价格历史级联删除），下轮扫描会重新建档
+$('btnClearHits').addEventListener('click', async () => {
+  if (!confirm('确定清空全部命中记录？对应的商品档案与价格历史会一并删除，下轮扫描将重新建档。')) return;
+  try {
+    const r = await api('/api/hits', { method: 'DELETE' });
+    toast(`已清空 ${r.cleared} 条命中记录`);
+    loadHits(1);
+  } catch (e) { toast(`清空失败：${e.message}`); }
+});
+
+/* ================= 商品浏览 ================= */
+let itemsPageSize = loadPageSizePref();
+const itemSelected = new Set();
+async function loadItems(page = 1, pageSize = itemsPageSize) {
+  itemSelected.clear();
+  updateSelBtn($('btnItemSelDel'), itemSelected);
+  // 任务下拉选项
+  const tasks = await api('/api/watch-items');
+  const current = $('itemWatchFilter').value;
+  $('itemWatchFilter').innerHTML = '<option value="">全部任务</option>' +
+    tasks.map((t) => `<option value="${t.id}">${esc(t.keyword)}</option>`).join('');
+  $('itemWatchFilter').value = current;
+
+  const params = new URLSearchParams({
+    status: $('itemStatusFilter').value || 'all',
+    keyword: $('itemKeywordFilter').value.trim(),
+    page,
+    pageSize,
+  });
+  if ($('itemWatchFilter').value) params.set('watchItemId', $('itemWatchFilter').value);
+  const data = await api(`/api/items?${params}`);
+  itemsPageSize = data.pageSize;
+  const items = data.list || [];
+  $('itemTable').innerHTML = items.length ? `
+    <table><thead><tr><th style="width:36px;"><input type="checkbox" class="sel-cb" id="itemSelAll" title="全选本页"></th><th style="width:56px"></th><th>商品</th><th>任务</th><th>价格</th><th>地区</th><th>状态</th><th>首次看到</th><th></th></tr></thead>
+    <tbody>${items.map((it) => {
+      const statusTag = it.notified_at
+        ? '<span class="tag ok">已推送命中</span>'
+        : it.filter_status === 'hit'
+          ? '<span class="tag info" title="首扫基线达标不推送；该商品降价时会重估并推送「降价达标」">规则达标</span>'
+          : it.filter_status === 'filtered'
+            ? `<span class="tag warn" title="${esc(it.filter_reason || '')}">被过滤</span>`
+            : '<span class="tag off">未判定</span>';
+      return `
+      <tr>
+        <td><input type="checkbox" class="sel-cb item-sel" data-id="${it.id}"></td>
+        <td>${it.image_url && it.image_url.startsWith('http') ? `<img class="thumb" src="${esc(it.image_url)}" referrerpolicy="no-referrer">` : ''}</td>
+        <td style="max-width:340px;"><a class="item-title" style="max-width:340px" href="${esc(it.url)}" target="_blank">${esc(it.title)}</a>
+          ${it.filter_status === 'filtered' && it.filter_reason ? `<div class="small" style="color:var(--warn);margin-top:2px;">${esc(it.filter_reason)}</div>` : ''}
+          ${it.ai_reason && it.notified_at ? `<div class="small muted" style="margin-top:2px;">AI：${esc(it.ai_reason)}</div>` : ''}
+        </td>
+        <td><span class="tag primary">${esc(it.keyword)}</span></td>
+        <td class="price">${fmtPrice(it.price)}</td>
+        <td class="muted">${esc(it.area || '—')}</td>
+        <td>${statusTag}</td>
+        <td class="muted small">${fmtTime(it.first_seen_at)}</td>
+        <td><button class="btn sm" onclick="showPriceHistory(${it.id})">价格</button></td>
+      </tr>`;
+    }).join('')}</tbody></table>`
+    : '<div class="empty"><div class="empty-icon">—</div>没有符合条件的商品</div>';
+  renderPagination($('itemPager'), { page: data.page, pageSize: data.pageSize, total: data.total, onChange: (o) => loadItems(o.page, o.pageSize) });
+}
+$('btnItemFilter').addEventListener('click', () => loadItems());
+$('itemKeywordFilter').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadItems(); });
+
+// 勾选与全选（事件委托，表头随 innerHTML 重建）
+$('itemTable').addEventListener('change', (e) => {
+  if (e.target.id === 'itemSelAll') {
+    document.querySelectorAll('.item-sel').forEach((cb) => {
+      cb.checked = e.target.checked;
+      const id = Number(cb.dataset.id);
+      if (e.target.checked) itemSelected.add(id); else itemSelected.delete(id);
+    });
+  } else if (e.target.classList.contains('item-sel')) {
+    const id = Number(e.target.dataset.id);
+    if (e.target.checked) itemSelected.add(id); else itemSelected.delete(id);
+    const cbs = [...document.querySelectorAll('.item-sel')];
+    const all = $('itemSelAll');
+    all.checked = cbs.length > 0 && cbs.every((cb) => cb.checked);
+    all.indeterminate = cbs.some((cb) => cb.checked) && !all.checked;
+  }
+  updateSelBtn($('btnItemSelDel'), itemSelected);
+});
+
+// 删除选中商品：价格历史一并删除
+$('btnItemSelDel').addEventListener('click', async () => {
+  if (!itemSelected.size) return;
+  if (!confirm(`确定删除选中的 ${itemSelected.size} 条商品档案？价格历史会一并删除。`)) return;
+  try {
+    const r = await api('/api/items/batch-delete', { method: 'POST', body: JSON.stringify({ ids: [...itemSelected] }) });
+    toast(`已删除 ${r.cleared} 条商品档案`);
+    itemSelected.clear();
+    loadItems(1);
+  } catch (e) { toast(`删除失败：${e.message}`); }
+});
+
+// 清空商品档案：删除全部商品（价格历史级联删除），下轮扫描重新建档（默认首扫只记录不推送）
+$('btnClearItems').addEventListener('click', async () => {
+  if (!confirm('确定清空全部商品档案？价格历史会一并删除，下轮扫描将重新建档（默认首扫只记录不推送）。')) return;
+  try {
+    const r = await api('/api/items', { method: 'DELETE' });
+    toast(`已清空 ${r.cleared} 条商品档案`);
+    loadItems(1);
+  } catch (e) { toast(`清空失败：${e.message}`); }
+});
+
+async function showPriceHistory(itemId) {
+  const rows = await api(`/api/items/${itemId}/price-history?limit=50`);
+  if (!rows.length) return toast('该商品暂无价格变化记录');
+  const max = Math.max(...rows.map((r) => r.price || 0), 1);
+  $('infoTitle').textContent = '价格变化记录';
+  $('infoBody').innerHTML = rows.map((r) => `
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;">
+      <div class="small muted" style="width:150px;">${fmtTime(r.captured_at)}</div>
+      <div style="flex:1;height:8px;background:#f0f2f4;border-radius:4px;overflow:hidden;">
+        <div style="width:${Math.max(4, Math.round(((r.price || 0) / max) * 100))}%;height:100%;background:var(--primary);border-radius:4px;"></div>
+      </div>
+      <div class="price" style="width:80px;text-align:right;">${fmtPrice(r.price)}</div>
+    </div>`).join('');
+  openModal('infoModal');
+}
+
+/* ================= 扫描日志 ================= */
+let taskNameMap = {};
+let logsPage = 1;
+let logsPageSize = loadPageSizePref();
+const logSelected = new Set();
+async function loadLogs(page = logsPage, pageSize = logsPageSize) {
+  logSelected.clear();
+  updateSelBtn($('btnLogSelDel'), logSelected);
+  const [data, tasks] = await Promise.all([api(`/api/scan-logs?page=${page}&pageSize=${pageSize}`), api('/api/watch-items')]);
+  logsPage = data.page;
+  logsPageSize = data.pageSize;
+  const logs = data.list || [];
+  taskNameMap = Object.fromEntries(tasks.map((t) => [t.id, t.keyword]));
+  $('logTable').innerHTML = logs.length ? logs.map((log) => {
+    let detail = null;
+    try { detail = log.detail ? JSON.parse(log.detail) : null; } catch { /* 忽略坏数据 */ }
+    const detailHtml = detail ? `
+      <div class="log-detail">
+        <div class="row">
+          <span class="muted">扫到 <b>${detail.seen}</b> 条</span>
+          <span class="muted">已见过 <b>${detail.dup}</b></span>
+          <span class="muted">新增 <b>${detail.new}</b></span>
+          <span style="color:var(--ok)">命中 <b>${detail.hits.length}</b></span>
+          ${detail.priceDrops ? `<span style="color:var(--info)">降价达标 <b>${detail.priceDrops}</b></span>` : ''}
+          <span style="color:var(--warn)">被过滤 <b>${detail.filtered.length}</b>${detail.filtered.length >= 50 ? '+' : ''}</span>
+        </div>
+        ${detail.hits.length ? detail.hits.map((h) => `<div class="filter-item"><span class="tag ok">命中</span><span style="flex:1">${esc(h.title)}</span><span class="price">${fmtPrice(h.price)}</span></div>`).join('') : ''}
+        ${detail.filtered.slice(0, 30).map((f) => `
+          <div class="filter-item">
+            <span class="filter-reason">${esc(f.reason)}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.title)}</span>
+            <span class="muted">${fmtPrice(f.price)}</span>
+          </div>`).join('')}
+        ${detail.filtered.length > 30 ? `<div class="muted" style="margin-top:6px;">…其余 ${detail.filtered.length - 30} 条略</div>` : ''}
+      </div>` : (log.error && log.status !== 'error' ? '' : '');
+    return `
+      <div class="log-row">
+        <input type="checkbox" class="sel-cb log-sel" data-id="${log.id}" title="选中此日志">
+        <details style="border-bottom:1px solid #f0f2f4;">
+          <summary style="padding:11px 14px;cursor:pointer;display:flex;align-items:center;gap:12px;list-style:none;">
+            <span class="muted small" style="width:140px;">${fmtTime(log.started_at)}</span>
+            <span style="width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(taskNameMap[log.watch_item_id] || `任务#${log.watch_item_id ?? '?'}`)}</span>
+            <span class="tag ${log.status === 'ok' ? 'ok' : 'bad'}">${log.status === 'ok' ? '成功' : '失败'}</span>
+            <span class="muted small">新增 ${log.new_count}</span>
+            <span class="small" style="color:${log.status === 'ok' ? 'var(--ok)' : 'var(--danger)'};flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(log.error || (log.status === 'ok' ? '点击展开本轮过滤明细' : ''))}</span>
+          </summary>
+          ${detailHtml}
+          ${log.status === 'error' && log.error ? `<div class="log-detail" style="color:var(--danger)">${esc(log.error)}</div>` : ''}
+        </details>
+      </div>`;
+  }).join('') : '<div class="empty"><div class="empty-icon">—</div>还没有扫描记录</div>';
+  renderPagination($('logPager'), { page: data.page, pageSize: data.pageSize, total: data.total, onChange: (o) => loadLogs(o.page, o.pageSize) });
+}
+
+// 勾选（事件委托；checkbox 在 details 外，点击不会误触发展开）
+$('logTable').addEventListener('change', (e) => {
+  if (!e.target.classList.contains('log-sel')) return;
+  const id = Number(e.target.dataset.id);
+  if (e.target.checked) logSelected.add(id); else logSelected.delete(id);
+  updateSelBtn($('btnLogSelDel'), logSelected);
+});
+
+// 删除选中日志
+$('btnLogSelDel').addEventListener('click', async () => {
+  if (!logSelected.size) return;
+  if (!confirm(`确定删除选中的 ${logSelected.size} 条扫描日志？`)) return;
+  try {
+    const r = await api('/api/scan-logs/batch-delete', { method: 'POST', body: JSON.stringify({ ids: [...logSelected] }) });
+    toast(`已删除 ${r.cleared} 条扫描日志`);
+    logSelected.clear();
+    loadLogs(1);
+  } catch (e) { toast(`删除失败：${e.message}`); }
+});
+
+// 清空扫描日志：只删日志记录，不影响商品与任务
+$('btnClearLogs').addEventListener('click', async () => {
+  if (!confirm('确定清空全部扫描日志？')) return;
+  try {
+    const r = await api('/api/scan-logs', { method: 'DELETE' });
+    toast(`已清空 ${r.cleared} 条扫描日志`);
+    loadLogs(1);
+  } catch (e) { toast(`清空失败：${e.message}`); }
+});
+
+/* ================= 设置 ================= */
+async function loadSettings() {
+  const { config } = await api('/api/config');
+  $('cfgBark').value = config.notify?.bark || '';
+  $('cfgServerchan').value = config.notify?.serverchan || '';
+  $('cfgTelegram').value = config.notify?.telegram || '';
+  $('cfgDingtalk').value = config.notify?.dingtalk || '';
+  $('cfgFeishu').value = config.notify?.feishu || '';
+  $('cfgDesktop').checked = !!config.notify?.desktop;
+  $('cfgAiEnabled').checked = !!config.ai?.enabled;
+  $('cfgAiBaseUrl').value = config.ai?.baseUrl || '';
+  $('cfgAiKey').value = config.ai?.apiKey || '';
+  $('cfgAiModel').value = config.ai?.model || '';
+  $('cfgAiStrict').checked = !!config.ai?.strict;
+  $('cfgFirstScan').checked = !!config.scan?.firstScanNotify;
+  $('cfgRetention').value = config.scan?.retentionDays ?? 30;
+}
+
+$('btnSaveSettings').addEventListener('click', async () => {
+  const { config } = await api('/api/config');
+  const next = {
+    ...config,
+    notify: {
+      ...config.notify,
+      bark: $('cfgBark').value.trim(),
+      serverchan: $('cfgServerchan').value.trim(),
+      telegram: $('cfgTelegram').value.trim(),
+      dingtalk: $('cfgDingtalk').value.trim(),
+      feishu: $('cfgFeishu').value.trim(),
+      desktop: $('cfgDesktop').checked,
+    },
+    ai: {
+      ...config.ai,
+      enabled: $('cfgAiEnabled').checked,
+      baseUrl: $('cfgAiBaseUrl').value.trim(),
+      apiKey: $('cfgAiKey').value.trim(),
+      model: $('cfgAiModel').value.trim(),
+      strict: $('cfgAiStrict').checked,
+    },
+    scan: {
+      ...config.scan,
+      firstScanNotify: $('cfgFirstScan').checked,
+      retentionDays: Math.max(1, Number($('cfgRetention').value) || 30),
+    },
+  };
+  try {
+    await api('/api/config', { method: 'PUT', body: JSON.stringify(next) });
+    toast('设置已保存');
+    loadSettings();
+  } catch (e) { toast(`保存失败：${e.message}`); }
+});
+
+/* ================= 登录态 ================= */
+let loginPollTimer = null;
+
+async function refreshLoginChip() {
+  try {
+    const { hasLoginState, session, expired } = await api('/api/login-state/status');
+    const dot = $('loginDot');
+    const text = $('loginText');
+    dot.className = 'dot';
+    if (session?.status === 'running') { dot.classList.add('busy'); text.textContent = '等待扫码…'; }
+    else if (hasLoginState) { dot.classList.add('on'); text.textContent = '已登录'; }
+    else if (expired) { dot.classList.add('off'); text.textContent = '登录已失效'; }
+    else { dot.classList.add('off'); text.textContent = '未登录'; }
+    $('loginStateInfo').innerHTML = hasLoginState
+      ? '<span class="tag ok">已有登录态</span> <span class="muted">扫描可正常运行；失效时重新扫码即可</span>'
+      : expired
+        ? '<span class="tag bad">登录已失效</span> <span class="muted">闲鱼会话已过期，请重新扫码登录，否则无法扫描</span>'
+        : '<span class="tag bad">暂无登录态</span> <span class="muted">请先扫码登录，否则无法扫描</span>';
+  } catch { /* 服务未就绪时忽略 */ }
+}
+
+async function startLogin() {
+  try {
+    await api('/api/login/start');
+    toast('已弹出浏览器，请在其中扫码登录闲鱼（最多等 5 分钟）');
+    if (loginPollTimer) clearInterval(loginPollTimer);
+    loginPollTimer = setInterval(pollLoginStatus, 2000);
+  } catch (e) { toast(e.message); }
+}
+
+async function pollLoginStatus() {
+  try {
+    const { session } = await api('/api/login-state/status');
+    if (session?.status === 'running') return;
+    clearInterval(loginPollTimer);
+    loginPollTimer = null;
+    if (session?.status === 'saved') toast('登录成功，登录态已保存');
+    else if (session?.status === 'timeout') toast('扫码超时，请重试');
+    else if (session?.status === 'cancelled') toast('已取消登录');
+    else if (session?.status === 'error') toast(`登录失败：${session.error || '未知错误'}`);
+    refreshLoginChip();
+  } catch { /* 下一轮重试 */ }
+}
+
+$('btnLogin').addEventListener('click', startLogin);
+$('btnLogin2').addEventListener('click', startLogin);
+$('btnLoginCancel').addEventListener('click', async () => {
+  try { await api('/api/login/cancel', { method: 'POST' }); toast('已请求取消'); }
+  catch (e) { toast(e.message); }
+});
+
+$('btnImport').addEventListener('click', () => $('importFile').click());
+$('importFile').addEventListener('change', async (event) => {
+  const file = event.target.files[0];
+  if (!file) return;
+  try {
+    const state = JSON.parse(await file.text());
+    await api('/api/login-state/import', { method: 'POST', body: JSON.stringify(state) });
+    toast('登录态已导入');
+    refreshLoginChip();
+  } catch (e) { toast(`导入失败：${e.message}`); }
+});
+
+/* ================= 顶部操作 ================= */
+// 扫描窗口：默认在屏幕外运行防打扰，点这里移回屏幕内围观，再点隐藏
+let scanWindowVisible = false;
+$('btnScanWindow').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/scan/window', { method: 'POST', body: JSON.stringify({ visible: !scanWindowVisible }) });
+    scanWindowVisible = result.visible;
+    $('btnScanWindow').textContent = scanWindowVisible ? '隐藏扫描窗口' : '扫描窗口';
+    toast(scanWindowVisible ? '扫描窗口已移到屏幕内（80,80）' : '扫描窗口已藏回屏幕外');
+  } catch (e) { toast(e.message); }
+});
+$('btnScanOnce').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/scan/once', { method: 'POST' });
+    toast(result.ok ? '已触发一轮扫描，稍后可在「扫描日志」查看明细' : result.error);
+    setTimeout(() => { if ($('view-logs').classList.contains('active')) loadLogs(); }, 8000);
+  } catch (e) { toast(e.message); }
+});
+$('btnTestNotify').addEventListener('click', async () => {
+  try {
+    const result = await api('/api/notify/test', { method: 'POST' });
+    if (result.ok) toast('测试通知已发送，请查收');
+    else toast(`发送失败：${result.errors?.join('；') || result.error || '未配置任何渠道'}`);
+  } catch (e) { toast(e.message); }
+});
+
+/* ================= 初始化 ================= */
+window.addEventListener('hashchange', () => {
+  const view = location.hash.replace('#', '');
+  if (VIEW_NAMES[view] && !$(`view-${view}`).classList.contains('active')) switchView(view);
+});
+// 无论带不带 hash 都要走一次 switchView，否则默认仪表盘的数据不会加载
+const initView = location.hash.replace('#', '');
+switchView(VIEW_NAMES[initView] ? initView : 'dashboard');
+refreshLoginChip();
+setInterval(refreshLoginChip, 5000);
+</script>
+</body>
+</html>
