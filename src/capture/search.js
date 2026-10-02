@@ -4,6 +4,19 @@ import { searchUrl, extractListings, safeJson } from '../parse/parser.js';
 // 搜索接口特征（来自 reference/monitor-preload.js）
 const SEARCH_API_MARKERS = ['mtop.taobao.idlemtopsearch', 'idlemtopsearch', 'pc.search'];
 
+// 关闭可能遮挡操作的全屏弹窗（如「网页版发闲置功能又升级啦！」促销层，1200px 大图拦截点击）：
+// Esc + 常见关闭钮，均为尽力而为，关不掉不报错（后续点击重试机制兜底）
+async function closeOverlay(page) {
+  await page.keyboard.press('Escape').catch(() => {});
+  const closeBtn = page
+    .locator('[class*="dialog"] [class*="close"], [class*="modal"] [class*="close"], [class*="closeBtn"], [class*="close-btn"], [class*="close-icon"]')
+    .first();
+  if (await closeBtn.isVisible({ timeout: 300 }).catch(() => false)) {
+    await closeBtn.click({ timeout: 1000 }).catch(() => {});
+  }
+  await page.waitForTimeout(400);
+}
+
 function isSearchResponse(url) {
   return SEARCH_API_MARKERS.some((marker) => String(url || '').includes(marker));
 }
@@ -52,31 +65,46 @@ export async function scanKeyword(context, keyword, { timeoutMs = 10000, minPric
     // propValueStr.searchFilter = "priceRange:min,max;"（接口有签名，无法直接改请求，
     // 只能模拟用户在筛选框输入——即真实用户路径）。响应收集由上方 priceRange 判定精确过滤。
     if (needPriceFilter) {
-      try {
-        const priceInputs = page.locator('input[placeholder="¥"]');
-        if ((await priceInputs.count()) >= 2) {
+      // 点击可能被全屏弹窗遮挡（促销层/风控挑战图），失败先关弹窗再重试一次；
+      // 点击用短超时，避免每轮卡 30s
+      let filled = false;
+      for (let attempt = 0; attempt < 2 && !filled; attempt++) {
+        try {
+          const priceInputs = page.locator('input[placeholder="¥"]');
+          if ((await priceInputs.count()) < 2) break;
           if (minPrice != null) {
-            await priceInputs.nth(0).click();
+            await priceInputs.nth(0).click({ timeout: 4000 });
             await priceInputs.nth(0).fill(String(minPrice));
             await page.waitForTimeout(400);
             await page.keyboard.press('Tab');
           }
           if (maxPrice != null) {
-            await priceInputs.nth(1).click();
+            await priceInputs.nth(1).click({ timeout: 4000 });
             await priceInputs.nth(1).fill(String(maxPrice));
             await page.waitForTimeout(400);
             await page.keyboard.press('Tab');
           }
           await page.keyboard.press('Enter'); // 确保触发带价格过滤的搜索
+          filled = true;
+        } catch {
+          if (attempt === 0) await closeOverlay(page);
         }
-      } catch {
-        // 价格框操作失败（UI 改版等）：不会发出带 priceRange 的请求，payloads 为空；
-        // 记 warning 后返回空列表，由调度器按 scan_log error 记录（本地规则无法兜底无数据）
+      }
+      if (!filled) {
+        // 价格框操作失败（弹窗遮挡/UI 改版等）：不会发出带 priceRange 的请求，payloads 必为空
         console.warn(`[scan] 「${keyword}」价格筛选框操作失败，本轮未采集`);
       }
     }
 
     await page.waitForTimeout(timeoutMs);
+
+    // 价格筛选开启却没收到任何带 priceRange 的响应 = 筛选请求没发出去（弹窗遮挡/UI 改版），
+    // 显式报错让 scan_log 记录真实原因，而不是静默记成「扫到 0 条」
+    if (needPriceFilter && payloads.length === 0) {
+      const err = new Error('价格筛选请求未发出（页面弹窗遮挡或 UI 改版），本轮未采集。可稍后重试或反馈排查');
+      err.code = 'PRICE_FILTER_FAILED';
+      throw err;
+    }
 
     // 风控拦截检测：WAF 返回「非法访问」页时明确报错，而不是静默 0 结果
     const bodyText = await page.textContent('body').catch(() => '');
