@@ -1010,20 +1010,20 @@ async function refreshLoginChip() {
     const text = $('loginText');
     dot.className = 'dot';
     if (session?.status === 'running') { dot.classList.add('busy'); text.textContent = '等待扫码…'; }
-    else if (hasLoginState) { dot.classList.add('on'); text.textContent = '已登录'; }
     else if (expired) { dot.classList.add('off'); text.textContent = '登录已失效'; }
+    else if (hasLoginState) { dot.classList.add('on'); text.textContent = '已登录'; }
     else { dot.classList.add('off'); text.textContent = '未登录'; }
-    $('loginStateInfo').innerHTML = hasLoginState
-      ? '<span class="tag ok">已有登录态</span> <span class="muted">扫描可正常运行；失效时重新扫码即可</span>'
-      : expired
-        ? '<span class="tag bad">登录已失效</span> <span class="muted">闲鱼会话已过期，请重新扫码登录，否则无法扫描</span>'
+    $('loginStateInfo').innerHTML = expired
+      ? '<span class="tag bad">登录已失效</span> <span class="muted">闲鱼会话已过期，请重新扫码登录，否则无法扫描</span>'
+      : hasLoginState
+        ? '<span class="tag ok">已有登录态</span> <span class="muted">扫描可正常运行；失效时重新扫码即可</span>'
         : '<span class="tag bad">暂无登录态</span> <span class="muted">请先扫码登录，否则无法扫描</span>';
   } catch { /* 服务未就绪时忽略 */ }
 }
 
 async function startLogin() {
   try {
-    await api('/api/login/start');
+    await api('/api/login/start', { method: 'POST' });
     toast('已弹出浏览器，请在其中扫码登录闲鱼（最多等 5 分钟）');
     if (loginPollTimer) clearInterval(loginPollTimer);
     loginPollTimer = setInterval(pollLoginStatus, 2000);

@@ -177,6 +177,26 @@ export function loginInProgress() {
 // 登录成功的标志 cookie（淘宝会话：unb=用户id，lgc/dnk/tracknick=昵称类）
 const LOGIN_COOKIE_NAMES = ['unb', 'lgc', 'dnk', 'tracknick'];
 
+// 监听页面用户接口的 ret，把服务端会话判定记入 state（{ ok, expired }）
+// 探针实证：失效/匿名会话该接口返回 FAIL_SYS_SESSION_EXPIRED——仅 cookie 名存在不可靠，
+// 失效旧 cookie 会瞬间误判「已登录」导致登录窗口刚打开就自动关闭
+function watchSessionVerdict(page, state) {
+  page.on('response', (response) => {
+    try {
+      // 登录页打开的 HOME_URL 会自发调用这两个用户态接口，ret 直接反映服务端会话判定
+      if (!/loginuser\.get|user\.page\.nav/.test(response.url())) return;
+      response.json().then((body) => {
+        if (!Array.isArray(body?.ret)) return;
+        const ret = body.ret.join(';');
+        if (ret.includes('SESSION_EXPIRED')) state.expired = true;
+        else if (/success/i.test(ret)) state.ok = true;
+      }).catch(() => {});
+    } catch {
+      // 单个响应失败忽略
+    }
+  });
+}
+
 // 发起有头扫码登录：立即返回，后台轮询登录 cookie，成功自动保存并关窗
 export async function startInteractiveLogin(account) {
   if (loginInProgress()) throw new Error('已有登录窗口进行中，请先完成或取消');
@@ -190,16 +210,26 @@ export async function startInteractiveLogin(account) {
       const context = await launchLoginContext();
       session.context = context;
       const page = context.pages()[0] || (await context.newPage());
+      const sessionVerdict = { ok: false, expired: false };
+      watchSessionVerdict(page, sessionVerdict);
       await page.goto(HOME_URL);
 
-      // 最多等 5 分钟扫码
+      // 最多等 5 分钟扫码；双信号确认 = 登录 cookie 存在 + 服务端接口认可
+      //（失效旧 cookie 也满足前者，双信号防止窗口刚打开就误判关窗）
       const deadline = Date.now() + 5 * 60 * 1000;
       let loggedIn = false;
+      let reloaded = false;
       while (Date.now() < deadline && session.status === 'running') {
         await page.waitForTimeout(2000);
         if (page.isClosed()) break;
         const cookies = await context.cookies('https://www.goofish.com').catch(() => []);
-        if (cookies.some((cookie) => LOGIN_COOKIE_NAMES.includes(cookie.name) && cookie.value)) {
+        const hasLoginCookie = cookies.some((cookie) => LOGIN_COOKIE_NAMES.includes(cookie.name) && cookie.value);
+        // 扫码成功但页面未自发重调验证接口时，reload 一次触发（限一次，防止明明登录了却等到超时）
+        if (hasLoginCookie && !sessionVerdict.ok && !reloaded) {
+          reloaded = true;
+          await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+        }
+        if (hasLoginCookie && sessionVerdict.ok) {
           loggedIn = true;
           break;
         }
@@ -212,6 +242,9 @@ export async function startInteractiveLogin(account) {
           // 重新登录成功：清除失效标记（页面恢复「已登录」，登录失效告警可再次触发）
           db.setConfigValue('loginStateExpired', false);
           db.setConfigValue('loginExpiredNotified', false);
+          // 记录保存时间：调度器据此识别「快照比扫描上下文新」并重建实例（见 scheduler.getContext），
+          // 否则已开的扫描浏览器一直带着失效旧 cookie，重新登录后窗口仍提示登录
+          db.setConfigValue('loginSavedAt', Date.now());
         } else {
           session.status = 'timeout';
         }
@@ -236,5 +269,48 @@ export async function cancelInteractiveLogin() {
   if (loginSession?.status === 'running') {
     loginSession.status = 'cancelled';
     await loginSession.context?.close().catch(() => {});
+  }
+}
+
+// ---------- 登录态真实校验（服务端视角）----------
+// 本地快照存在 ≠ 服务端认可（Session 可能已被淘宝侧过期）。实测信号
+// （scripts/probe-login-verify.js）：快照失效/匿名时，页面自发调用的用户接口
+// 返回 ret=["FAIL_SYS_SESSION_EXPIRED::Session过期"]；而 URL 不重定向、unb
+// cookie 仍在、页面文本无差异——接口 ret 是唯一可靠判定信号。
+// 返回 { status: ok|expired|unknown|none, reason? }；unknown 不改动现有状态
+export async function verifyLoginState() {
+  if (!hasLoginState()) return { status: 'none' };
+  let browser = null;
+  try {
+    const instance = await openScanContext({});
+    browser = instance.browser;
+    const page = instance.page;
+    const rets = [];
+    const onResponse = async (response) => {
+      try {
+        // 页面加载时会自发调用的两个用户态接口（探针实测），ret 直接反映服务端会话判定
+        if (!/loginuser\.get|user\.page\.nav/.test(response.url())) return;
+        const body = await response.json().catch(() => null);
+        if (Array.isArray(body?.ret)) rets.push(body.ret.join(';'));
+      } catch {
+        // 单个响应失败不影响其余判定
+      }
+    };
+    page.on('response', onResponse);
+    await page.goto(HOME_URL, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(8000); // 等页面自发调用户接口
+
+    if ((await page.textContent('body').catch(() => '')).includes('非法访问')) {
+      return { status: 'unknown', reason: '触发风控拦截页，暂不定论' };
+    }
+    if (!rets.length) return { status: 'unknown', reason: '未捕获到用户接口响应' };
+    if (rets.some((ret) => ret.includes('SESSION_EXPIRED'))) return { status: 'expired' };
+    // ok 也要求接口明确成功，其他错误（如 token 层异常）不定论，交由下轮再验
+    if (rets.some((ret) => /success/i.test(ret))) return { status: 'ok' };
+    return { status: 'unknown', reason: `用户接口无成功响应（${rets[0].slice(0, 60)}）` };
+  } catch (error) {
+    return { status: 'unknown', reason: error.message };
+  } finally {
+    if (browser) await browser.close().catch(() => {});
   }
 }

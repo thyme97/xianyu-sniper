@@ -1,5 +1,5 @@
 // 调度器：按任务轮询（≥60s + ±30% 抖动）、多任务错峰、串行扫描、scan_log 记录
-import { openScanContext, invalidateLoginState, setScanWindowVisible } from './capture/browser.js';
+import { openScanContext, invalidateLoginState, setScanWindowVisible, verifyLoginState, loginInProgress } from './capture/browser.js';
 import { scanKeyword } from './capture/search.js';
 import { passesRule } from './filter/rule.js';
 import { aiEnabledFor, aiCheck } from './filter/ai.js';
@@ -8,6 +8,7 @@ import * as db from './store/db.js';
 const MIN_INTERVAL_SEC = 60; // 防封基线：轮询间隔 ≥60 秒
 const JITTER_RATIO = 0.3;    // 随机抖动 ±30%
 const STAGGER_MS = 15000;    // 多任务初始错峰间隔
+const VERIFY_INTERVAL_MS = 30 * 60 * 1000; // 登录态定期校验间隔（静默开一次页面，成本约 15 秒）
 
 function jitteredMs(intervalSec) {
   const base = Math.max(MIN_INTERVAL_SEC, Number(intervalSec) || MIN_INTERVAL_SEC);
@@ -40,6 +41,15 @@ export function createScheduler({ config, notifier, log } = {}) {
   // 按任务账号取上下文；config.accounts 中可配置命名账号的 proxy（代理预留）
   async function getContext(watchItem) {
     const key = watchItem.account || '';
+    // 登录态在实例创建后被更新过（重新扫码登录）：旧 context 仍带着失效 cookie，
+    // 关掉重建才能让扫描用上新快照（loginSavedAt 由 startInteractiveLogin 保存时写入）
+    const existing = opened.get(key);
+    const savedAt = Number(db.getConfigValue('loginSavedAt')) || 0;
+    if (existing && savedAt > existing.createdAt) {
+      await existing.context.close().catch(() => {});
+      await existing.browser.close().catch(() => {});
+      opened.delete(key);
+    }
     if (!opened.has(key)) {
       const accountConfig = (config.accounts || []).find((entry) => entry.name === key);
       const instance = await openScanContext({
@@ -47,6 +57,7 @@ export function createScheduler({ config, notifier, log } = {}) {
         proxy: accountConfig?.proxy,
         headless: config.scan?.headless, // undefined = 自动（桌面屏外有头 / 服务器无头）
       });
+      instance.createdAt = Date.now();
       opened.set(key, instance);
     }
     return opened.get(key).context;
@@ -94,6 +105,38 @@ export function createScheduler({ config, notifier, log } = {}) {
     }
     for (const e of entries) db.markNotified(e.itemId);
     return entries.length;
+  }
+
+  // 登录失效标记 + 告警（只推一次，重新扫码登录成功后重置）：扫描重定向与定期校验共用
+  async function markLoginExpired(source) {
+    if (!db.getConfigValue('loginStateExpired')) db.setConfigValue('loginStateExpired', true);
+    if (db.getConfigValue('loginExpiredNotified')) return;
+    db.setConfigValue('loginExpiredNotified', true);
+    logger.warn(`[login] 检测到登录态失效（${source}），已提醒重新扫码`);
+    notifier
+      .send({
+        title: '⚠️ 闲鱼登录态已失效',
+        body: '请打开 Web 控制台点击「扫码登录」重新登录，否则无法继续扫描。',
+        url: '',
+      })
+      .catch(() => {});
+  }
+
+  // 登录态定期静默校验（服务端视角）：本地快照存在不代表服务端认可
+  async function verifyOnce() {
+    if (loginInProgress()) return; // 用户正在扫码，跳过本轮避免误判旧快照
+    const result = await verifyLoginState();
+    if (result.status === 'expired') {
+      await markLoginExpired('定期校验');
+    } else if (result.status === 'ok') {
+      if (db.getConfigValue('loginStateExpired')) {
+        db.setConfigValue('loginStateExpired', false);
+        db.setConfigValue('loginExpiredNotified', false);
+        logger.info('[login] 登录态校验通过，恢复「已登录」状态');
+      }
+    } else if (result.status === 'unknown') {
+      logger.warn(`[login] 登录态校验未定论：${result.reason}`);
+    }
   }
 
   // 单任务一次扫描（含入库、筛选、AI、通知）；失败写 scan_log，不中断调度
@@ -206,17 +249,7 @@ export function createScheduler({ config, notifier, log } = {}) {
       if (error.code === 'LOGIN_EXPIRED') {
         invalidateLoginState(watchItem.account || undefined);
         await closeBrowser();
-        // 登录失效告警只推一次：重新扫码登录成功后重置（防止每轮扫描重复轰炸）
-        if (!db.getConfigValue('loginExpiredNotified')) {
-          db.setConfigValue('loginExpiredNotified', true);
-          notifier
-            .send({
-              title: '⚠️ 闲鱼登录态已失效',
-              body: '请打开 Web 控制台点击「扫码登录」重新登录，否则无法继续扫描。',
-              url: '',
-            })
-            .catch(() => {});
-        }
+        await markLoginExpired('扫描重定向');
       }
       db.insertScanLog({
         watchItemId: watchItem.id,
@@ -264,6 +297,9 @@ export function createScheduler({ config, notifier, log } = {}) {
     }
   }
 
+  let verifyTimer = null;    // 登录态定期校验定时器
+  let verifyStartTimer = null; // 启动后首校验延时器
+
   function start() {
     if (running) return;
     running = true;
@@ -275,6 +311,10 @@ export function createScheduler({ config, notifier, log } = {}) {
       const delay = index * STAGGER_MS + Math.round(Math.random() * 5000);
       timers.set(item.id, setTimeout(() => loop(item), delay));
     });
+    // 登录态校验：启动后 20 秒先跑一次（错开任务错峰），之后每 30 分钟±抖动静默校验
+    // 走同一串行队列，避免与扫描并发轰炸闲鱼接口
+    verifyStartTimer = setTimeout(() => enqueue(verifyOnce), 20000);
+    verifyTimer = setInterval(() => enqueue(verifyOnce), VERIFY_INTERVAL_MS + Math.round(Math.random() * VERIFY_INTERVAL_MS * JITTER_RATIO));
     logger.info(`[scheduler] 已启动 ${items.length} 个监控任务`);
   }
 
@@ -291,6 +331,8 @@ export function createScheduler({ config, notifier, log } = {}) {
     running = false;
     for (const timer of timers.values()) clearTimeout(timer);
     timers.clear();
+    if (verifyTimer) clearInterval(verifyTimer);
+    if (verifyStartTimer) clearTimeout(verifyStartTimer);
     await closeBrowser();
     logger.info('[scheduler] 已停止');
   }
