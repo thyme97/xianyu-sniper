@@ -1,0 +1,106 @@
+# 发版流水线：推 v* 标签 → GitHub 双平台自动打包 → 创建 Release
+# - tag 触发（v*）：windows-latest 出 NSIS 安装器 + portable，macos-latest（Apple Silicon）出 dmg，
+#   全部产物汇总后用 gh 发布到 GitHub Release；Release 说明由 scripts/release-notes.sh 生成
+#   （上个标签以来的提交按中文习惯粗分类 + 自动对比链接；已存在则补传并刷新说明，可安全重跑）
+# - workflow_dispatch 手动触发：仅构建并上传 workflow 产物，不发布（联调/验证用）
+# - 发布前置校验：标签版本必须与 package.json version 一致，否则直接失败
+# 说明：runner 在 GitHub 机房直连官方源，无需 npmmirror 镜像 env；
+#       Node 固定 20 —— ≥24.16 会触发 electron#51619（extract-zip 解压不完整）
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write # 创建/上传 Release 用默认 GITHUB_TOKEN 即可，无需另配 secret
+
+jobs:
+  build:
+    name: 打包（${{ matrix.os }}）
+    strategy:
+      fail-fast: false # 一平台失败不取消另一平台，便于排查
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: 安装依赖
+        run: npm ci
+
+      # 图标现场重生成（mac 出 icns / win 出 ico），避免依赖本地是否提交了 build/ 图标
+      - name: 生成应用图标
+        run: npm run gen-app-icon
+
+      - name: better-sqlite3 切 Electron ABI
+        run: npm run abi:electron
+
+      - name: electron-builder 打包
+        run: npm run dist
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest*.yml
+          if-no-files-found: error
+
+  release:
+    name: 发布 GitHub Release
+    needs: build # 双平台全部成功才发布
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 全量历史 + 全部标签：release-notes.sh 要取上个标签以来的提交
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 校验标签与 package.json 版本一致
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "::error::标签 v$TAG 与 package.json version $PKG 不一致；请先更新版本号再打标签"
+            exit 1
+          fi
+
+      - name: 生成 Release 说明（提交粗分类 + 对比链接）
+        run: |
+          bash scripts/release-notes.sh "${GITHUB_REF_NAME}" "${GITHUB_REPOSITORY}" > /tmp/release-notes.md
+          echo "===== Release 说明预览 ====="
+          cat /tmp/release-notes.md
+
+      - name: 汇总双平台产物
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: 创建 Release 并上传产物（已存在则更新说明并补传）
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -lh dist-artifacts/
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release edit "${GITHUB_REF_NAME}" --notes-file /tmp/release-notes.md
+            gh release upload "${GITHUB_REF_NAME}" dist-artifacts/* --clobber
+          else
+            gh release create "${GITHUB_REF_NAME}" dist-artifacts/* \
+              --title "${GITHUB_REF_NAME}" \
+              --notes-file /tmp/release-notes.md
+          fi

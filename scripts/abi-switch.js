@@ -30,7 +30,10 @@ function readVersion(p) {
 
 // electron ABI 由 electron 进程自报，避免维护版本号映射表
 function electronAbi() {
-  const exe = path.join(root, 'node_modules', 'electron', 'dist', 'electron.exe');
+  // 平台差异：Windows 是 dist/electron.exe，macOS 在 Electron.app 包内
+  const exe = process.platform === 'win32'
+    ? path.join(root, 'node_modules', 'electron', 'dist', 'electron.exe')
+    : path.join(root, 'node_modules', 'electron', 'dist', 'Electron.app', 'Contents', 'MacOS', 'Electron');
   if (!fs.existsSync(exe)) throw new Error('electron 二进制缺失：先跑 node node_modules/electron/install.js');
   return execFileSync(exe, ['-p', 'process.versions.modules'], {
     env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },

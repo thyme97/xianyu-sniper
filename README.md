@@ -34,12 +34,14 @@ Node.js 20+ / Playwright / better-sqlite3 / Fastify
 
 ### 方式一：发行版 exe（推荐）
 
-到 [Releases](https://gitee.com/thymef/xianyu-sniper/releases) 下载：
+到 [Releases](https://github.com/thyme97/xianyu-sniper/releases) 下载：
 
 | 文件 | 说明 |
 |---|---|
 | `xianyu-sniper-setup-*.exe` | 安装版，双击安装，从开始菜单/桌面启动 |
 | `xianyu-sniper-portable-*.exe` | 免安装绿色版，双击即用 |
+
+发版由 GitHub Actions 自动完成：推 `v*` 标签即触发双平台打包（Windows exe + macOS dmg）并发布 Release。
 
 无需安装 Node.js 或浏览器（采集复用系统自带的 Edge/Chrome）。启动后自动打开控制台（默认 http://127.0.0.1:8787，被占用时自动顺延），数据与登录态存放在 `%APPDATA%\xianyu-sniper\`。
 
@@ -71,13 +73,37 @@ node src/index.js run                        # 启动调度器 + Web 控制台
 2. 「监控任务」→ 新建任务：填关键词 + 目标价（可选包含词/排除词/价格区间）
 3. 程序自动定时扫描，命中就推送到你配置的渠道；「商品浏览」可查看每条商品为什么命中/被过滤
 
+## 快速开始（macOS · Apple Silicon）
+
+### 方式一：发行版 dmg
+
+到 [Releases](https://github.com/thyme97/xianyu-sniper/releases) 下载 `xianyu-sniper-*-mac-arm64.dmg`，打开后把「闲鱼蹲价助手」拖进 Applications：
+
+- 无开发者签名：首次打开若被拦截，到 系统设置 → 隐私与安全性 点「仍要打开」；若提示文件已损坏，在终端执行 `xattr -cr /Applications/闲鱼蹲价助手.app` 后再打开
+- 采集浏览器复用系统 Chrome；未安装 Chrome 的先执行一次 `npx playwright install chromium`
+- 数据与登录态存放在 `~/Library/Application Support/xianyu-sniper/`
+
+### 方式二：源码运行 / 自行打包
+
+前置：Node.js 20+（macOS 26 Tahoe 上建议 ≤24.15，已知坑见下）。
+
+```bash
+npm install
+npm run abi:electron     # better-sqlite3 切到 Electron ABI（打包/跑桌面壳前必须）
+npm run electron         # 桌面壳运行
+npm run gen-app-icon     # 生成图标（mac 上同时产出 build/icon.icns 与 icon.ico）
+npm run dist             # 打包 → dist/xianyu-sniper-<版本>-mac-arm64.dmg
+```
+
+> **macOS 26（Tahoe）已知坑**：npm install 后若 Electron 启动即被杀、`node_modules/electron/dist` 里的文件消失（系统误判恶意软件移入废纸篓），是 extract-zip bug + XProtect 误杀的组合，恢复与重签命令见 `docs/02` 「分发与打包计划」一节。
+
 ## 目录结构
 
 ```text
 xianyu-sniper/
 ├── AGENTS.md            # AI 协作与项目规范
 ├── README.md
-├── build/               # 打包素材（icon.ico）
+├── build/               # 打包素材（icon.ico / icon.icns）
 ├── docs/                # 编号文档（方案/架构/进度/参考说明）
 ├── reference/           # 参考代码留存（Xianyu-Supply-Monitor 源码快照，只读）
 ├── scripts/             # 工具脚本（图标生成/打包/ABI 切换）
