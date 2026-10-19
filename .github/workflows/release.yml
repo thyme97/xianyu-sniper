@@ -43,7 +43,9 @@ jobs:
         run: npm run abi:electron
 
       - name: electron-builder 打包
-        run: npm run dist
+        # CI 里检测到「带 v* 标签 + GitHub 远端」会默认走 onTagOrDraft 自动发布并强制要求 GH_TOKEN，
+        # 显式禁用：Release 由下方 release job 用 gh 统一创建（带粗分类说明），不经 electron-builder
+        run: npm run dist -- --publish never
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
